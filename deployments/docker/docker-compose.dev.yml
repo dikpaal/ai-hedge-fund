@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: hedge-fund-postgres
+    environment:
+      POSTGRES_DB: hedge_fund_db
+      POSTGRES_USER: hedge_fund
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./sql/init:/docker-entrypoint-initdb.d
+    networks:
+      - hedge-fund-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hedge_fund -d hedge_fund_db"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: hedge-fund-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - hedge-fund-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  postgres-admin:
+    image: adminer
+    container_name: hedge-fund-adminer
+    ports:
+      - "8090:8080"
+    depends_on:
+      - postgres
+    networks:
+      - hedge-fund-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  hedge-fund-network:
+    driver: bridge
