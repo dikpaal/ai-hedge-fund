@@ -240,14 +240,15 @@ func (r *PortfolioRepository) DeletePortfolio(ctx context.Context, portfolioID i
 // CreatePosition creates a new position
 func (r *PortfolioRepository) CreatePosition(ctx context.Context, position *models.Position) error {
 	query := `
-		INSERT INTO positions (user_id, symbol, quantity, side, entry_price, current_price,
+		INSERT INTO positions (user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
 		                      unrealized_pnl, realized_pnl, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`
 
 	now := time.Now()
 	err := r.db.QueryRowContext(ctx, query,
 		position.UserID,
+		position.PortfolioID,
 		position.Symbol,
 		position.Quantity,
 		position.Side,
@@ -279,7 +280,7 @@ func (r *PortfolioRepository) CreatePosition(ctx context.Context, position *mode
 // GetPositionByID retrieves a position by ID
 func (r *PortfolioRepository) GetPositionByID(ctx context.Context, positionID int) (*models.Position, error) {
 	query := `
-		SELECT id, user_id, symbol, quantity, side, entry_price, current_price,
+		SELECT id, user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
 		       unrealized_pnl, realized_pnl, created_at, updated_at
 		FROM positions
 		WHERE id = $1`
@@ -288,6 +289,7 @@ func (r *PortfolioRepository) GetPositionByID(ctx context.Context, positionID in
 	err := r.db.QueryRowContext(ctx, query, positionID).Scan(
 		&position.ID,
 		&position.UserID,
+		&position.PortfolioID,
 		&position.Symbol,
 		&position.Quantity,
 		&position.Side,
@@ -313,12 +315,11 @@ func (r *PortfolioRepository) GetPositionByID(ctx context.Context, positionID in
 // GetPositionsByPortfolioID retrieves all positions for a portfolio
 func (r *PortfolioRepository) GetPositionsByPortfolioID(ctx context.Context, portfolioID int) ([]models.Position, error) {
 	query := `
-		SELECT p.id, p.user_id, p.symbol, p.quantity, p.side, p.entry_price, p.current_price,
-		       p.unrealized_pnl, p.realized_pnl, p.created_at, p.updated_at
-		FROM positions p
-		JOIN portfolios pf ON p.user_id = pf.user_id
-		WHERE pf.id = $1
-		ORDER BY p.created_at DESC`
+		SELECT id, user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
+		       unrealized_pnl, realized_pnl, created_at, updated_at
+		FROM positions
+		WHERE portfolio_id = $1
+		ORDER BY created_at DESC`
 
 	rows, err := r.db.QueryContext(ctx, query, portfolioID)
 	if err != nil {
@@ -333,6 +334,7 @@ func (r *PortfolioRepository) GetPositionsByPortfolioID(ctx context.Context, por
 		err := rows.Scan(
 			&position.ID,
 			&position.UserID,
+			&position.PortfolioID,
 			&position.Symbol,
 			&position.Quantity,
 			&position.Side,
@@ -356,7 +358,7 @@ func (r *PortfolioRepository) GetPositionsByPortfolioID(ctx context.Context, por
 // GetPositionByUserAndSymbol retrieves a specific position by user and symbol
 func (r *PortfolioRepository) GetPositionByUserAndSymbol(ctx context.Context, userID int, symbol string) (*models.Position, error) {
 	query := `
-		SELECT id, user_id, symbol, quantity, side, entry_price, current_price,
+		SELECT id, user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
 		       unrealized_pnl, realized_pnl, created_at, updated_at
 		FROM positions
 		WHERE user_id = $1 AND symbol = $2`
@@ -365,6 +367,7 @@ func (r *PortfolioRepository) GetPositionByUserAndSymbol(ctx context.Context, us
 	err := r.db.QueryRowContext(ctx, query, userID, symbol).Scan(
 		&position.ID,
 		&position.UserID,
+		&position.PortfolioID,
 		&position.Symbol,
 		&position.Quantity,
 		&position.Side,
@@ -392,13 +395,14 @@ func (r *PortfolioRepository) GetPositionByUserAndSymbol(ctx context.Context, us
 func (r *PortfolioRepository) UpdatePosition(ctx context.Context, position *models.Position) error {
 	query := `
 		UPDATE positions
-		SET quantity = $2, side = $3, entry_price = $4, current_price = $5,
-		    unrealized_pnl = $6, realized_pnl = $7, updated_at = $8
+		SET portfolio_id = $2, quantity = $3, side = $4, entry_price = $5, current_price = $6,
+		    unrealized_pnl = $7, realized_pnl = $8, updated_at = $9
 		WHERE id = $1`
 
 	now := time.Now()
 	result, err := r.db.ExecContext(ctx, query,
 		position.ID,
+		position.PortfolioID,
 		position.Quantity,
 		position.Side,
 		position.EntryPrice,
@@ -455,14 +459,15 @@ func (r *PortfolioRepository) DeletePosition(ctx context.Context, positionID int
 // CreateTrade creates a new trade record
 func (r *PortfolioRepository) CreateTrade(ctx context.Context, trade *models.Trade) error {
 	query := `
-		INSERT INTO trades (user_id, position_id, symbol, quantity, price, side, type, status,
+		INSERT INTO trades (user_id, portfolio_id, position_id, symbol, quantity, price, side, type, status,
 		                   fees, executed_at, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		RETURNING id`
 
 	now := time.Now()
 	err := r.db.QueryRowContext(ctx, query,
 		trade.UserID,
+		trade.PortfolioID,
 		trade.PositionID,
 		trade.Symbol,
 		trade.Quantity,
@@ -580,4 +585,202 @@ func (r *PortfolioRepository) GetTradesBySymbol(ctx context.Context, userID int,
 	}
 
 	return trades, nil
+}
+
+// Transaction Support Methods
+
+// BeginTx starts a new database transaction
+func (r *PortfolioRepository) BeginTx(ctx context.Context) (*sql.Tx, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		r.logger.Error("Failed to begin transaction", zap.Error(err))
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	return tx, nil
+}
+
+// CreatePositionTx creates a new position within a transaction
+func (r *PortfolioRepository) CreatePositionTx(ctx context.Context, tx *sql.Tx, position *models.Position) error {
+	query := `
+		INSERT INTO positions (user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
+		                      unrealized_pnl, realized_pnl, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		RETURNING id`
+
+	now := time.Now()
+	err := tx.QueryRowContext(ctx, query,
+		position.UserID,
+		position.PortfolioID,
+		position.Symbol,
+		position.Quantity,
+		position.Side,
+		position.EntryPrice,
+		position.CurrentPrice,
+		position.UnrealizedPnL,
+		position.RealizedPnL,
+		now,
+		now,
+	).Scan(&position.ID)
+
+	if err != nil {
+		r.logger.Error("Failed to create position in transaction", zap.Error(err),
+			zap.Int("user_id", position.UserID), zap.String("symbol", position.Symbol))
+		return fmt.Errorf("failed to create position: %w", err)
+	}
+
+	position.CreatedAt = now
+	position.UpdatedAt = now
+
+	r.logger.Info("Position created successfully in transaction",
+		zap.Int("position_id", position.ID),
+		zap.String("symbol", position.Symbol),
+		zap.Int64("quantity", position.Quantity))
+
+	return nil
+}
+
+// UpdatePositionTx updates an existing position within a transaction
+func (r *PortfolioRepository) UpdatePositionTx(ctx context.Context, tx *sql.Tx, position *models.Position) error {
+	query := `
+		UPDATE positions
+		SET portfolio_id = $2, quantity = $3, side = $4, entry_price = $5, current_price = $6,
+		    unrealized_pnl = $7, realized_pnl = $8, updated_at = $9
+		WHERE id = $1`
+
+	now := time.Now()
+	result, err := tx.ExecContext(ctx, query,
+		position.ID,
+		position.PortfolioID,
+		position.Quantity,
+		position.Side,
+		position.EntryPrice,
+		position.CurrentPrice,
+		position.UnrealizedPnL,
+		position.RealizedPnL,
+		now,
+	)
+
+	if err != nil {
+		r.logger.Error("Failed to update position in transaction", zap.Error(err), zap.Int("position_id", position.ID))
+		return fmt.Errorf("failed to update position: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("position not found: %d", position.ID)
+	}
+
+	position.UpdatedAt = now
+
+	r.logger.Info("Position updated successfully in transaction",
+		zap.Int("position_id", position.ID), zap.String("symbol", position.Symbol))
+	return nil
+}
+
+// DeletePositionTx deletes a position within a transaction
+func (r *PortfolioRepository) DeletePositionTx(ctx context.Context, tx *sql.Tx, positionID int) error {
+	result, err := tx.ExecContext(ctx, "DELETE FROM positions WHERE id = $1", positionID)
+	if err != nil {
+		r.logger.Error("Failed to delete position in transaction", zap.Error(err), zap.Int("position_id", positionID))
+		return fmt.Errorf("failed to delete position: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("position not found: %d", positionID)
+	}
+
+	r.logger.Info("Position deleted successfully in transaction", zap.Int("position_id", positionID))
+	return nil
+}
+
+// CreateTradeTx creates a new trade record within a transaction
+func (r *PortfolioRepository) CreateTradeTx(ctx context.Context, tx *sql.Tx, trade *models.Trade) error {
+	query := `
+		INSERT INTO trades (user_id, portfolio_id, position_id, symbol, quantity, price, side, type, status,
+		                   fees, executed_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+		RETURNING id`
+
+	now := time.Now()
+	err := tx.QueryRowContext(ctx, query,
+		trade.UserID,
+		trade.PortfolioID,
+		trade.PositionID,
+		trade.Symbol,
+		trade.Quantity,
+		trade.Price,
+		trade.Side,
+		trade.Type,
+		trade.Status,
+		trade.Fees,
+		trade.ExecutedAt,
+		now,
+	).Scan(&trade.ID)
+
+	if err != nil {
+		r.logger.Error("Failed to create trade in transaction", zap.Error(err),
+			zap.Int("user_id", trade.UserID), zap.String("symbol", trade.Symbol))
+		return fmt.Errorf("failed to create trade: %w", err)
+	}
+
+	trade.CreatedAt = now
+
+	r.logger.Info("Trade created successfully in transaction",
+		zap.Int("trade_id", trade.ID),
+		zap.String("symbol", trade.Symbol),
+		zap.String("side", trade.Side),
+		zap.Int64("quantity", trade.Quantity),
+		zap.Float64("price", trade.Price))
+
+	return nil
+}
+
+// UpdatePortfolioTx updates an existing portfolio within a transaction
+func (r *PortfolioRepository) UpdatePortfolioTx(ctx context.Context, tx *sql.Tx, portfolio *models.Portfolio) error {
+	query := `
+		UPDATE portfolios
+		SET cash = $2, margin_used = $3, margin_available = $4, total_value = $5,
+		    unrealized_pnl = $6, realized_pnl = $7, day_pnl = $8, updated_at = $9
+		WHERE id = $1`
+
+	now := time.Now()
+	result, err := tx.ExecContext(ctx, query,
+		portfolio.ID,
+		portfolio.Cash,
+		portfolio.MarginUsed,
+		portfolio.MarginAvailable,
+		portfolio.TotalValue,
+		portfolio.UnrealizedPnL,
+		portfolio.RealizedPnL,
+		portfolio.DayPnL,
+		now,
+	)
+
+	if err != nil {
+		r.logger.Error("Failed to update portfolio in transaction", zap.Error(err), zap.Int("portfolio_id", portfolio.ID))
+		return fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("portfolio not found: %d", portfolio.ID)
+	}
+
+	portfolio.UpdatedAt = now
+
+	r.logger.Info("Portfolio updated successfully in transaction", zap.Int("portfolio_id", portfolio.ID))
+	return nil
 }

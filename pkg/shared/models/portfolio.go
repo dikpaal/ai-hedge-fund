@@ -8,6 +8,7 @@ import (
 type Position struct {
 	ID               int       `json:"id" db:"id"`
 	UserID           int       `json:"user_id" db:"user_id"`
+	PortfolioID      int       `json:"portfolio_id" db:"portfolio_id"`
 	Symbol           string    `json:"symbol" db:"symbol"`
 	Quantity         int64     `json:"quantity" db:"quantity"`
 	Side             string    `json:"side" db:"side"` // "long" or "short"
@@ -39,6 +40,7 @@ type Portfolio struct {
 type Trade struct {
 	ID          int       `json:"id" db:"id"`
 	UserID      int       `json:"user_id" db:"user_id"`
+	PortfolioID int       `json:"portfolio_id" db:"portfolio_id"`
 	PositionID  int       `json:"position_id" db:"position_id"`
 	Symbol      string    `json:"symbol" db:"symbol"`
 	Quantity    int64     `json:"quantity" db:"quantity"`

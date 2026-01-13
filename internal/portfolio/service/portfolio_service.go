@@ -121,58 +121,87 @@ func (s *PortfolioService) ExecuteTrade(ctx context.Context, portfolioID int, tr
 		return nil, fmt.Errorf("trade validation failed: %w", err)
 	}
 
-	// Execute trade using domain logic
+	// Execute trade using domain logic (updates portfolio state in-memory)
 	position, err := s.domain.ExecuteTradeOrder(trade, portfolio, currentPrice)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute trade: %w", err)
 	}
 
-	// Begin transaction-like operations
-	// 1. Create trade record
-	err = s.repo.CreateTrade(ctx, trade)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create trade record: %w", err)
-	}
+	// Set portfolio_id on trade
+	trade.PortfolioID = portfolioID
 
-	// 2. Update or create position
+	// Begin database transaction
+	tx, err := s.repo.BeginTx(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Handle position operations FIRST (so we get the position ID)
+	var finalPosition *models.Position
 	if position != nil {
+		// Set portfolio_id on position
+		position.PortfolioID = portfolioID
+
+		// Check if position already exists
 		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, trade.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing position: %w", err)
 		}
 
 		if existingPosition == nil {
-			// Create new position
-			err = s.repo.CreatePosition(ctx, position)
+			// Create new position in transaction
+			err = s.repo.CreatePositionTx(ctx, tx, position)
 			if err != nil {
 				return nil, fmt.Errorf("failed to create position: %w", err)
 			}
+			finalPosition = position
 		} else {
-			// Update existing position
+			// Update existing position in transaction
 			position.ID = existingPosition.ID
-			err = s.repo.UpdatePosition(ctx, position)
+			err = s.repo.UpdatePositionTx(ctx, tx, position)
 			if err != nil {
 				return nil, fmt.Errorf("failed to update position: %w", err)
 			}
+			finalPosition = position
 		}
+
+		// Set position_id on trade (now we have the position ID)
+		trade.PositionID = finalPosition.ID
 	} else {
-		// Position was closed, delete it
+		// Position was closed, need to get existing position for trade record
 		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, trade.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing position: %w", err)
 		}
+
 		if existingPosition != nil {
-			err = s.repo.DeletePosition(ctx, existingPosition.ID)
+			// Set position_id before deletion
+			trade.PositionID = existingPosition.ID
+
+			// Delete the position in transaction
+			err = s.repo.DeletePositionTx(ctx, tx, existingPosition.ID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to delete position: %w", err)
 			}
 		}
 	}
 
-	// 3. Update portfolio
-	err = s.repo.UpdatePortfolio(ctx, portfolio)
+	// Create trade record (position_id is now set)
+	err = s.repo.CreateTradeTx(ctx, tx, trade)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create trade record: %w", err)
+	}
+
+	// Update portfolio
+	err = s.repo.UpdatePortfolioTx(ctx, tx, portfolio)
 	if err != nil {
 		return nil, fmt.Errorf("failed to update portfolio: %w", err)
+	}
+
+	// Commit transaction
+	if err = tx.Commit(); err != nil {
+		return nil, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	s.logger.Info("Trade executed successfully",
@@ -184,7 +213,7 @@ func (s *PortfolioService) ExecuteTrade(ctx context.Context, portfolioID int, tr
 		zap.Float64("price", trade.Price),
 		zap.Float64("fees", trade.Fees))
 
-	return position, nil
+	return finalPosition, nil
 }
 
 // GetTradeHistory retrieves trade history for a portfolio
