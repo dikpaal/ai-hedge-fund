@@ -6,6 +6,7 @@ import "time"
 
 type CreatePortfolioRequest struct {
 	UserID      int     `json:"user_id" binding:"required"`
+	Name        string  `json:"name" binding:"required"`
 	InitialCash float64 `json:"initial_cash" binding:"required,gt=0"`
 }
 
@@ -30,6 +31,7 @@ type RebalanceRequest struct {
 type PortfolioResponse struct {
 	ID               int                `json:"id"`
 	UserID           int                `json:"user_id"`
+	Name             string             `json:"name"`
 	Cash             float64            `json:"cash"`
 	MarginUsed       float64            `json:"margin_used"`
 	MarginAvailable  float64            `json:"margin_available"`

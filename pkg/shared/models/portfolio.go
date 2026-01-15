@@ -24,6 +24,7 @@ type Position struct {
 type Portfolio struct {
 	ID               int        `json:"id" db:"id"`
 	UserID           int        `json:"user_id" db:"user_id"`
+	Name             string     `json:"name" db:"name"`
 	Cash             float64    `json:"cash" db:"cash"`
 	MarginUsed       float64    `json:"margin_used" db:"margin_used"`
 	MarginAvailable  float64    `json:"margin_available" db:"margin_available"`

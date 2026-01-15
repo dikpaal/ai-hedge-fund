@@ -304,13 +304,13 @@ func (ps *PortfolioService) RebalanceRecommendations(portfolio *models.Portfolio
 
 			if currentPrice, exists := currentPrices[symbol]; exists {
 				recommendation := map[string]interface{}{
-					"symbol":         symbol,
-					"current_percent": currentPercent,
-					"target_percent":  targetPercent,
-					"difference":      diff,
-					"target_value":    targetValue,
-					"current_value":   currentValue,
-					"action":          ps.getRebalanceAction(diff),
+					"symbol":           symbol,
+					"current_percent":  currentPercent,
+					"target_percent":   targetPercent,
+					"difference":       diff,
+					"target_value":     targetValue,
+					"current_value":    currentValue,
+					"action":           ps.getRebalanceAction(diff),
 					"estimated_shares": int64((targetValue - currentValue) / currentPrice),
 				}
 				recommendations = append(recommendations, recommendation)

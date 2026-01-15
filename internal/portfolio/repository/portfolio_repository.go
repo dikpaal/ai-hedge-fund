@@ -28,14 +28,15 @@ func NewPortfolioRepository(db *database.DB, logger *zap.Logger) *PortfolioRepos
 // CreatePortfolio creates a new portfolio
 func (r *PortfolioRepository) CreatePortfolio(ctx context.Context, portfolio *models.Portfolio) error {
 	query := `
-		INSERT INTO portfolios (user_id, cash, margin_used, margin_available, total_value,
+		INSERT INTO portfolios (user_id, name, cash, margin_used, margin_available, total_value,
 		                       unrealized_pnl, realized_pnl, day_pnl, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING id`
 
 	now := time.Now()
 	err := r.db.QueryRowContext(ctx, query,
 		portfolio.UserID,
+		portfolio.Name,
 		portfolio.Cash,
 		portfolio.MarginUsed,
 		portfolio.MarginAvailable,
@@ -65,7 +66,7 @@ func (r *PortfolioRepository) CreatePortfolio(ctx context.Context, portfolio *mo
 // GetPortfolioByID retrieves a portfolio by ID with all positions
 func (r *PortfolioRepository) GetPortfolioByID(ctx context.Context, portfolioID int) (*models.Portfolio, error) {
 	query := `
-		SELECT id, user_id, cash, margin_used, margin_available, total_value,
+		SELECT id, user_id, name, cash, margin_used, margin_available, total_value,
 		       unrealized_pnl, realized_pnl, day_pnl, created_at, updated_at
 		FROM portfolios
 		WHERE id = $1`
@@ -74,6 +75,7 @@ func (r *PortfolioRepository) GetPortfolioByID(ctx context.Context, portfolioID 
 	err := r.db.QueryRowContext(ctx, query, portfolioID).Scan(
 		&portfolio.ID,
 		&portfolio.UserID,
+		&portfolio.Name,
 		&portfolio.Cash,
 		&portfolio.MarginUsed,
 		&portfolio.MarginAvailable,
@@ -107,7 +109,7 @@ func (r *PortfolioRepository) GetPortfolioByID(ctx context.Context, portfolioID 
 // GetPortfoliosByUserID retrieves all portfolios for a user
 func (r *PortfolioRepository) GetPortfoliosByUserID(ctx context.Context, userID int) ([]models.Portfolio, error) {
 	query := `
-		SELECT id, user_id, cash, margin_used, margin_available, total_value,
+		SELECT id, user_id, name, cash, margin_used, margin_available, total_value,
 		       unrealized_pnl, realized_pnl, day_pnl, created_at, updated_at
 		FROM portfolios
 		WHERE user_id = $1
@@ -126,6 +128,7 @@ func (r *PortfolioRepository) GetPortfoliosByUserID(ctx context.Context, userID 
 		err := rows.Scan(
 			&portfolio.ID,
 			&portfolio.UserID,
+			&portfolio.Name,
 			&portfolio.Cash,
 			&portfolio.MarginUsed,
 			&portfolio.MarginAvailable,
@@ -356,15 +359,15 @@ func (r *PortfolioRepository) GetPositionsByPortfolioID(ctx context.Context, por
 }
 
 // GetPositionByUserAndSymbol retrieves a specific position by user and symbol
-func (r *PortfolioRepository) GetPositionByUserAndSymbol(ctx context.Context, userID int, symbol string) (*models.Position, error) {
+func (r *PortfolioRepository) GetPositionByUserAndSymbol(ctx context.Context, userID int, portfolioID int, symbol string) (*models.Position, error) {
 	query := `
 		SELECT id, user_id, portfolio_id, symbol, quantity, side, entry_price, current_price,
 		       unrealized_pnl, realized_pnl, created_at, updated_at
 		FROM positions
-		WHERE user_id = $1 AND symbol = $2`
+		WHERE user_id = $1 AND portfolio_id = $2 AND symbol = $3`
 
 	position := &models.Position{}
-	err := r.db.QueryRowContext(ctx, query, userID, symbol).Scan(
+	err := r.db.QueryRowContext(ctx, query, userID, portfolioID, symbol).Scan(
 		&position.ID,
 		&position.UserID,
 		&position.PortfolioID,

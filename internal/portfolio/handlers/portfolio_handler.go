@@ -49,7 +49,7 @@ func (h *PortfolioHandler) CreatePortfolio(c *gin.Context) {
 		return
 	}
 
-	portfolio, err := h.service.CreatePortfolio(c.Request.Context(), req.UserID, req.InitialCash)
+	portfolio, err := h.service.CreatePortfolio(c.Request.Context(), req.UserID, req.Name, req.InitialCash)
 	if err != nil {
 		h.logger.Error("Failed to create portfolio", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Failed to create portfolio", Details: err.Error()})
@@ -604,6 +604,7 @@ func (h *PortfolioHandler) toPortfolioResponse(portfolio *models.Portfolio) Port
 	return PortfolioResponse{
 		ID:              portfolio.ID,
 		UserID:          portfolio.UserID,
+		Name:            portfolio.Name,
 		Cash:            portfolio.Cash,
 		MarginUsed:      portfolio.MarginUsed,
 		MarginAvailable: portfolio.MarginAvailable,

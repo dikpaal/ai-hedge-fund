@@ -27,9 +27,10 @@ func NewPortfolioService(repo *repository.PortfolioRepository, domain *domain.Po
 // Portfolio Operations
 
 // CreatePortfolio creates a new portfolio with initial cash
-func (s *PortfolioService) CreatePortfolio(ctx context.Context, userID int, initialCash float64) (*models.Portfolio, error) {
+func (s *PortfolioService) CreatePortfolio(ctx context.Context, userID int, name string, initialCash float64) (*models.Portfolio, error) {
 	portfolio := &models.Portfolio{
 		UserID:           userID,
+		Name:             name,
 		Cash:             initialCash,
 		MarginUsed:       0.0,
 		MarginAvailable:  initialCash * 0.5, // 50% margin
@@ -49,6 +50,7 @@ func (s *PortfolioService) CreatePortfolio(ctx context.Context, userID int, init
 	s.logger.Info("Portfolio created successfully",
 		zap.Int("portfolio_id", portfolio.ID),
 		zap.Int("user_id", userID),
+		zap.String("name", name),
 		zap.Float64("initial_cash", initialCash))
 
 	return portfolio, nil
@@ -144,7 +146,7 @@ func (s *PortfolioService) ExecuteTrade(ctx context.Context, portfolioID int, tr
 		position.PortfolioID = portfolioID
 
 		// Check if position already exists
-		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, trade.Symbol)
+		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, portfolioID, trade.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing position: %w", err)
 		}
@@ -170,7 +172,7 @@ func (s *PortfolioService) ExecuteTrade(ctx context.Context, portfolioID int, tr
 		trade.PositionID = finalPosition.ID
 	} else {
 		// Position was closed, need to get existing position for trade record
-		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, trade.Symbol)
+		existingPosition, err := s.repo.GetPositionByUserAndSymbol(ctx, trade.UserID, portfolioID, trade.Symbol)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check existing position: %w", err)
 		}
@@ -234,8 +236,8 @@ func (s *PortfolioService) GetPositions(ctx context.Context, portfolioID int) ([
 }
 
 // GetPosition retrieves a specific position
-func (s *PortfolioService) GetPosition(ctx context.Context, userID int, symbol string) (*models.Position, error) {
-	return s.repo.GetPositionByUserAndSymbol(ctx, userID, symbol)
+func (s *PortfolioService) GetPosition(ctx context.Context, userID int, portfolioID int, symbol string) (*models.Position, error) {
+	return s.repo.GetPositionByUserAndSymbol(ctx, userID, portfolioID, symbol)
 }
 
 // GetPositionSummary calculates detailed metrics for a specific position
